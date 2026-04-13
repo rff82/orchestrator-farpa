@@ -73,6 +73,31 @@ jobs:
       - name: Copy audit report to workspace
         run: cp /tmp/audit-report.json ./audit-report.json
 
+      - name: Enrich with Gemini Search Grounding
+        run: |
+          echo "→ Enriquecendo relatório com Gemini Search Grounding..."
+
+          # Buscar contexto de mercado relevante para o ecossistema
+          RESPONSE=$(curl -s -X POST \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "contents": [{
+                "parts": [{
+                  "text": "Busque notícias recentes (últimas 24h) sobre: 1) incidentes Cloudflare Workers ou Pages, 2) mudanças na API Anthropic Claude, 3) alertas de segurança para APIs de IA generativa no Brasil. Responda em JSON: {\"cf_incidents\": [], \"anthropic_changes\": [], \"security_alerts\": []}"
+                }]
+              }],
+              "tools": [{"google_search": {}}],
+              "generationConfig": {"responseMimeType": "application/json"}
+            }' 2>/dev/null || echo '{"cf_incidents":[],"anthropic_changes":[],"security_alerts":[]}')
+
+          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "{}"' \
+            > /tmp/gemini-context.json 2>/dev/null \
+            || echo '{}' > /tmp/gemini-context.json
+
+          echo "✓ Contexto Gemini obtido"
+          cp /tmp/gemini-context.json ./gemini-context.json
+
       - name: Claude analysis
         uses: anthropic/claude-code-action@beta
         with:
@@ -80,13 +105,17 @@ jobs:
           allowed_tools: "Read,Write"
           max_turns: 5
           prompt: |
-            Você é o auditor de infraestrutura do farpa.ai. Leia CLAUDE.md (contexto do ecossistema)
-            e audit-report.json (estado real do Cloudflare).
+            Você é o auditor de infraestrutura do farpa.ai. Leia:
+            - CLAUDE.md (contexto do ecossistema)
+            - audit-report.json (estado real do Cloudflare)
+            - gemini-context.json (contexto de mercado via Gemini Search Grounding — pode estar vazio)
 
             Seu trabalho:
             1. Identificar itens Críticos (recurso ausente ou subdomínio down — HTTP != 200/301/302)
             2. Identificar Warnings (recurso inesperado não listado no ecossistema)
             3. Listar itens OK
+            4. Se gemini-context.json tiver dados relevantes, incluir seção "### Alertas Externos"
+               com incidentes Cloudflare ou mudanças de API que possam impactar o ecossistema
 
             Para cada item Crítico, forneça o comando wrangler exato de correção:
             - Pages faltando: `wrangler pages project create {nome} --production-branch main`
@@ -98,11 +127,12 @@ jobs:
             - Título H2: "## Status da Infraestrutura farpa.ai"
             - Seção "### Crítico" (se houver)
             - Seção "### Warning" (se houver)
+            - Seção "### Alertas Externos" (se gemini-context tiver dados)
             - Seção "### OK"
             - Seção "### Comandos de Correção" (se houver itens críticos)
-            - Rodapé: "---\n*Gerado automaticamente por rff82/orchestrator-farpa · audit.yml*"
+            - Rodapé: "---\n*Gerado por rff82/orchestrator-farpa · audit.yml · Gemini Search Grounding*"
 
-            Se tudo estiver OK, escreva apenas: "ALL_OK" no arquivo.
+            Se tudo estiver OK e não houver alertas externos, escreva apenas: "ALL_OK" no arquivo.
 
   # ─────────────────────────────────────────────────────────────────
   # Job 3: Criar GitHub Issue com o relatório do Claude

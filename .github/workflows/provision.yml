@@ -31,6 +31,16 @@ on:
         required: false
         default: true
         type: boolean
+      generate_hero_image:
+        description: "Gerar hero image com Imagen 3 (requer GOOGLE_IMAGEN_API_KEY)"
+        required: false
+        default: true
+        type: boolean
+      generate_stitch_brief:
+        description: "Gerar design brief para uso com Stitch MCP localmente"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -410,12 +420,140 @@ HTML
           git push || echo "AVISO: Falha no push"
 
   # ─────────────────────────────────────────────────────────────────
-  # Job 7: Claude gera Issue de conclusão com checklist
+  # Job 7: Gerar hero image com Imagen 3
+  # ─────────────────────────────────────────────────────────────────
+  generate-hero-image:
+    name: Generate Hero Image (Imagen 3)
+    runs-on: ubuntu-latest
+    needs: update-ecosystem-config
+    if: ${{ inputs.generate_hero_image == true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate hero image via Imagen 3
+        run: |
+          PRODUCT="${{ inputs.product_name }}"
+          SUBDOMAIN="${{ inputs.subdomain }}.farpa.ai"
+
+          PROMPT="Minimal dark interface design for farpa ${PRODUCT}, Brazilian AI platform, \
+indigo #4338CA and amber #F59E0B color palette, plus jakarta sans typography, \
+presentation-ready for executive audience, clean data visualization, \
+subtle gradient, professional fintech aesthetic, 16:9 aspect ratio"
+
+          echo "→ Gerando hero image para $SUBDOMAIN com Imagen 3..."
+
+          RESPONSE=$(curl -s -X POST \
+            "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${{ secrets.GOOGLE_IMAGEN_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            --data "{
+              \"instances\": [{\"prompt\": \"$PROMPT\"}],
+              \"parameters\": {
+                \"sampleCount\": 1,
+                \"aspectRatio\": \"16:9\",
+                \"safetyFilterLevel\": \"block_some\"
+              }
+            }")
+
+          ERROR=$(echo "$RESPONSE" | jq -r '.error.message // empty' 2>/dev/null)
+          if [ -n "$ERROR" ]; then
+            echo "AVISO: Imagen 3 retornou erro: $ERROR"
+            exit 0
+          fi
+
+          # Decodificar e salvar imagem
+          echo "$RESPONSE" | jq -r '.predictions[0].bytesBase64Encoded // empty' \
+            | base64 -d > /tmp/hero-${PRODUCT}.png 2>/dev/null \
+            && echo "✓ Hero image gerada: /tmp/hero-${PRODUCT}.png" \
+            || echo "AVISO: Não foi possível decodificar a imagem"
+
+      - name: Push hero image to product repo
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          REPO_NAME="${{ inputs.product_name }}-farpa-ai"
+          IMG_FILE="/tmp/hero-${{ inputs.product_name }}.png"
+          if [ -f "$IMG_FILE" ]; then
+            CONTENT_B64=$(base64 -w 0 < "$IMG_FILE")
+            gh api "repos/rff82/$REPO_NAME/contents/assets/hero.png" \
+              -X PUT \
+              -f message="feat: add AI-generated hero image — Imagen 3" \
+              -f content="$CONTENT_B64" \
+              || echo "AVISO: Falha ao fazer push da imagem"
+            echo "✓ hero.png → rff82/$REPO_NAME/assets/hero.png"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 8: Gerar Stitch design brief (para uso local com MCP)
+  # ─────────────────────────────────────────────────────────────────
+  generate-stitch-brief:
+    name: Generate Stitch Design Brief
+    runs-on: ubuntu-latest
+    needs: update-ecosystem-config
+    if: ${{ inputs.generate_stitch_brief == true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Claude generates Stitch brief
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Write"
+          max_turns: 3
+          prompt: |
+            Gere um design brief para o novo produto farpa.${{ inputs.product_name }}.
+
+            Produto: farpa ${{ inputs.product_name }}
+            Subdomínio: ${{ inputs.subdomain }}.farpa.ai
+            Has Worker: ${{ inputs.has_worker }}
+
+            Leia CLAUDE.md para entender o design system (Índigo #4338CA, Âmbar #F59E0B,
+            Plus Jakarta Sans, alto contraste obrigatório).
+
+            Escreva em /tmp/stitch-brief-${{ inputs.product_name }}.md um documento com:
+
+            # Stitch Design Brief — farpa ${{ inputs.product_name }}
+
+            ## Telas a gerar no Stitch MCP
+            (listar 3-5 telas essenciais: home, dashboard principal, página de erro, etc.)
+
+            ## Prompts prontos para Stitch MCP
+            Para cada tela, um prompt completo para `generate_screen_from_text`:
+            ```
+            generate_screen_from_text(
+              text="[prompt detalhado incluindo: layout, componentes, cores, tipografia, alto-contraste-btn no header]"
+            )
+            ```
+
+            ## Design System Stitch
+            Configuração para `create_design_system` seguindo o ecossistema farpa.ai.
+
+            ## Instruções de uso
+            Como usar estes prompts com Claude Code + Stitch MCP localmente.
+
+      - name: Push design brief to product repo
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          REPO_NAME="${{ inputs.product_name }}-farpa-ai"
+          BRIEF_FILE="/tmp/stitch-brief-${{ inputs.product_name }}.md"
+          if [ -f "$BRIEF_FILE" ]; then
+            CONTENT_B64=$(base64 -w 0 < "$BRIEF_FILE")
+            gh api "repos/rff82/$REPO_NAME/contents/docs/stitch-design-brief.md" \
+              -X PUT \
+              -f message="docs: add Stitch design brief — generated by orchestrator-farpa" \
+              -f content="$CONTENT_B64" \
+              || echo "AVISO: Falha ao criar design brief"
+            echo "✓ stitch-design-brief.md → rff82/$REPO_NAME/docs/"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 9: Claude gera Issue de conclusão com checklist
   # ─────────────────────────────────────────────────────────────────
   provision-summary:
     name: Provision Summary Issue
     runs-on: ubuntu-latest
-    needs: [update-ecosystem-config, generate-claude-md, configure-dns]
+    needs: [update-ecosystem-config, generate-claude-md, configure-dns, generate-hero-image, generate-stitch-brief]
     if: always()
     steps:
       - uses: actions/checkout@v4

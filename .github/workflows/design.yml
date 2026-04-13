@@ -1,0 +1,147 @@
+name: "Design — Stitch Brief Generator"
+
+# Este workflow NÃO roda em GitHub Actions com Stitch MCP.
+# Ele gera um design brief que você usa localmente com Claude Code + Stitch MCP.
+# Para executar telas no Stitch: abrir Claude Code e usar as ferramentas
+# mcp__stitch__generate_screen_from_text / mcp__stitch__create_design_system
+
+on:
+  workflow_dispatch:
+    inputs:
+      product:
+        description: "Produto para gerar design brief (ex: health-farpa-ai)"
+        required: true
+        type: string
+      scope:
+        description: "Escopo do brief"
+        required: false
+        default: "full"
+        type: choice
+        options:
+          - full
+          - home-only
+          - design-system-only
+          - audit-visual
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # Job 1: Ler contexto do produto e gerar brief completo
+  # ─────────────────────────────────────────────────────────────────
+  generate-design-brief:
+    name: Generate Stitch Design Brief
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout product repo
+        uses: actions/checkout@v4
+        with:
+          repository: rff82/${{ inputs.product }}
+          token: ${{ secrets.GH_PAT }}
+          path: product-context
+        continue-on-error: true
+
+      - name: Claude generates design brief
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Write,Bash"
+          max_turns: 8
+          prompt: |
+            Você é o designer de produto do ecossistema farpa.ai.
+            Leia CLAUDE.md (contexto do orquestrador) e product-context/CLAUDE.md (se existir).
+
+            Produto: ${{ inputs.product }}
+            Escopo: ${{ inputs.scope }}
+
+            Gere um arquivo /tmp/stitch-brief-${{ inputs.product }}.md completo com:
+
+            # Stitch Design Brief — ${{ inputs.product }}
+            Data: (data atual)
+
+            ## Contexto do Produto
+            (resumo do produto baseado no CLAUDE.md do produto)
+
+            ## Design System farpa.ai
+            Parâmetros para `mcp__stitch__create_design_system`:
+            ```json
+            {
+              "name": "farpa-design-system",
+              "colors": {
+                "primary": "#4338CA",
+                "accent": "#F59E0B",
+                "background": "#0F0F13",
+                "surface": "#1A1A24",
+                "text": "#F1F5F9"
+              },
+              "typography": {
+                "display": "Plus Jakarta Sans",
+                "mono": "JetBrains Mono"
+              }
+            }
+            ```
+
+            ## Telas Prioritárias
+            (para each scope, listar as telas mais importantes)
+
+            ## Prompts para mcp__stitch__generate_screen_from_text
+
+            Para CADA tela necessária, um bloco:
+
+            ### Tela: [Nome da Tela]
+            ```
+            Texto do prompt completo e detalhado para o Stitch, incluindo:
+            - Layout (header, main, footer)
+            - Componentes específicos (cards, tabelas, gráficos)
+            - Alto-contraste button OBRIGATÓRIO no header (id="btn-alto-contraste")
+            - Paleta: Índigo #4338CA primary, Âmbar #F59E0B accent
+            - Tipografia: Plus Jakarta Sans
+            - Tom: executive, presentation-ready, data-rich
+            ```
+
+            ## Auditoria Visual (se scope=audit-visual)
+            Checklist para verificar conformidade das telas atuais com o design system.
+
+            ## Passos para Executar Localmente
+            1. Abrir Claude Code no diretório do projeto
+            2. Verificar que Stitch MCP está configurado (settings.json)
+            3. Executar os prompts acima com mcp__stitch__generate_screen_from_text
+            4. Aplicar design system com mcp__stitch__apply_design_system
+            5. Exportar screenshots e usar como referência para HTML
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 2: Publicar brief como Issue + artifact
+  # ─────────────────────────────────────────────────────────────────
+  publish-brief:
+    name: Publish Design Brief
+    runs-on: ubuntu-latest
+    needs: generate-design-brief
+    if: always()
+    steps:
+      - name: Upload brief as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stitch-brief-${{ inputs.product }}
+          path: /tmp/stitch-brief-${{ inputs.product }}.md
+          retention-days: 30
+        continue-on-error: true
+
+      - name: Create GitHub Issue with brief
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRIEF_FILE="/tmp/stitch-brief-${{ inputs.product }}.md"
+          if [ -f "$BRIEF_FILE" ]; then
+            gh issue create \
+              --repo rff82/orchestrator-farpa \
+              --title "[DESIGN] Stitch Brief — ${{ inputs.product }}" \
+              --body-file "$BRIEF_FILE" \
+              --label "design,stitch,ui" \
+              --assignee "rff82"
+          else
+            echo "Brief não encontrado — ver logs do Claude step"
+          fi

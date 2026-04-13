@@ -1,6 +1,39 @@
 {
   "github_user": "rff82",
   "orchestrator_repo": "orchestrator-farpa",
+  "google_integrations": {
+    "gemini": {
+      "default_model": "gemini-2.0-flash",
+      "models": {
+        "fast": "gemini-2.0-flash",
+        "pro": "gemini-1.5-pro",
+        "vision": "gemini-2.0-flash-exp"
+      },
+      "search_grounding": true,
+      "secret": "GEMINI_API_KEY",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/models"
+    },
+    "imagen": {
+      "model": "imagen-3.0-generate-001",
+      "secret": "GOOGLE_IMAGEN_API_KEY",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict",
+      "use_cases": ["provision_hero_image", "health_vision", "library_thumbnails"]
+    },
+    "stitch": {
+      "type": "mcp_local_only",
+      "design_system_name": "farpa-design-system",
+      "note": "Usar via Claude Code local — não disponível em GitHub Actions"
+    },
+    "notebooklm": {
+      "type": "manual_only",
+      "no_public_api": true,
+      "docs_to_upload": [
+        "farpa-reengenharia/00-visao/",
+        "farpa-reengenharia/01-produtos/",
+        "farpa-reengenharia/04-roadmap/"
+      ]
+    }
+  },
   "products": [
     {
       "repo": "AI",
