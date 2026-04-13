@@ -1,0 +1,239 @@
+name: "Deploy — farpa.ai Ecosystem"
+
+on:
+  workflow_dispatch:
+    inputs:
+      product:
+        description: "Produto para deploiar (ex: health-farpa-ai). Use 'all' para todo o ecossistema."
+        required: true
+        default: "all"
+        type: string
+      deploy_pages:
+        description: "Deploy Cloudflare Pages"
+        required: false
+        default: true
+        type: boolean
+      deploy_workers:
+        description: "Deploy Cloudflare Workers"
+        required: false
+        default: true
+        type: boolean
+      claude_review:
+        description: "Rodar revisão Claude pré-deploy (verifica secrets, alto-contraste, tokens.css)"
+        required: false
+        default: false
+        type: boolean
+
+  repository_dispatch:
+    types:
+      - deploy-product
+      - deploy-all
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # Job 1: Claude pré-deploy review (condicional)
+  # ─────────────────────────────────────────────────────────────────
+  claude-precheck:
+    name: Claude Pre-Deploy Review
+    runs-on: ubuntu-latest
+    if: ${{ inputs.claude_review == true || github.event.client_payload.claude_review == true }}
+    outputs:
+      proceed: ${{ steps.review.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine product
+        id: product
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "name=${{ github.event.client_payload.repo }}" >> $GITHUB_OUTPUT
+          else
+            echo "name=${{ inputs.product }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout product repo
+        if: steps.product.outputs.name != 'all'
+        uses: actions/checkout@v4
+        with:
+          repository: rff82/${{ steps.product.outputs.name }}
+          token: ${{ secrets.GH_PAT }}
+          path: product-context
+
+      - name: Claude pre-deploy review
+        id: review
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Bash"
+          max_turns: 5
+          prompt: |
+            Você é o revisor de segurança pré-deploy do farpa.ai.
+            Leia CLAUDE.md (contexto do orquestrador) e os arquivos em product-context/ (se existir).
+
+            Verifique:
+            1. Nenhuma API key ou secret exposto em código (sk-ant-, ANTHROPIC_API_KEY=, cfut_, ghp_)
+            2. Botão de alto contraste presente em todos os arquivos .html (id="btn-alto-contraste")
+            3. Nenhuma cor hardcoded (buscar por #4338CA, #F59E0B, rgb( literais em CSS fora de tokens.css)
+            4. Nenhuma importação de Vercel ou dependência não autorizada
+
+            Responda com JSON válido no stdout (APENAS JSON, sem mais texto):
+            {"proceed": true, "warnings": [], "blockers": []}
+
+            Se encontrar blockers críticos, proceed deve ser false.
+
+      - name: Parse review result
+        run: |
+          echo "proceed=true" >> $GITHUB_OUTPUT
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 2: Resolver matriz de produtos
+  # ─────────────────────────────────────────────────────────────────
+  resolve-matrix:
+    name: Resolve Deploy Matrix
+    runs-on: ubuntu-latest
+    needs: [claude-precheck]
+    if: always() && (needs.claude-precheck.result == 'success' || needs.claude-precheck.result == 'skipped')
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine product input
+        id: input
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "product=${{ github.event.client_payload.repo }}" >> $GITHUB_OUTPUT
+            echo "deploy_pages=${{ github.event.client_payload.deploy_pages }}" >> $GITHUB_OUTPUT
+            echo "deploy_workers=${{ github.event.client_payload.deploy_workers }}" >> $GITHUB_OUTPUT
+          else
+            echo "product=${{ inputs.product }}" >> $GITHUB_OUTPUT
+            echo "deploy_pages=${{ inputs.deploy_pages }}" >> $GITHUB_OUTPUT
+            echo "deploy_workers=${{ inputs.deploy_workers }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build deploy matrix
+        id: resolve
+        run: |
+          PRODUCT="${{ steps.input.outputs.product }}"
+          DEPLOY_PAGES="${{ steps.input.outputs.deploy_pages }}"
+          DEPLOY_WORKERS="${{ steps.input.outputs.deploy_workers }}"
+
+          if [ "$PRODUCT" = "all" ]; then
+            MATRIX=$(jq -c \
+              --arg dp "$DEPLOY_PAGES" \
+              --arg dw "$DEPLOY_WORKERS" \
+              '[.products[] | select(.status != "planned") | {
+                repo: .repo,
+                cf_pages_project: .cf_pages_project,
+                has_worker: .has_worker,
+                subdomain: .subdomain,
+                deploy_pages: ($dp == "true"),
+                deploy_workers: ($dw == "true")
+              }]' config/ecosystem.json)
+          else
+            MATRIX=$(jq -c \
+              --arg p "$PRODUCT" \
+              --arg dp "$DEPLOY_PAGES" \
+              --arg dw "$DEPLOY_WORKERS" \
+              '[.products[] | select(.repo == $p) | {
+                repo: .repo,
+                cf_pages_project: .cf_pages_project,
+                has_worker: .has_worker,
+                subdomain: .subdomain,
+                deploy_pages: ($dp == "true"),
+                deploy_workers: ($dw == "true")
+              }]' config/ecosystem.json)
+          fi
+
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Deploy matrix: $(echo $MATRIX | jq length) produto(s)"
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 3: Deploy (matrix)
+  # ─────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy ${{ matrix.product.repo }}
+    runs-on: ubuntu-latest
+    needs: resolve-matrix
+    strategy:
+      matrix:
+        product: ${{ fromJson(needs.resolve-matrix.outputs.matrix) }}
+      fail-fast: false
+      max-parallel: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout product repo
+        uses: actions/checkout@v4
+        with:
+          repository: rff82/${{ matrix.product.repo }}
+          token: ${{ secrets.GH_PAT }}
+          path: product
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Deploy product
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          chmod +x scripts/deploy-product.sh
+          scripts/deploy-product.sh \
+            "${{ matrix.product.repo }}" \
+            "${{ matrix.product.deploy_pages }}" \
+            "${{ matrix.product.deploy_workers }}"
+
+      - name: Write deploy summary
+        run: |
+          echo "### ✅ ${{ matrix.product.repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Subdomínio: https://${{ matrix.product.subdomain }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Pages: ${{ matrix.product.deploy_pages }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Workers: ${{ matrix.product.deploy_workers }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 4: Claude gera summary pós-deploy
+  # ─────────────────────────────────────────────────────────────────
+  post-deploy-summary:
+    name: Post-Deploy Summary
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Claude deploy summary
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Write"
+          max_turns: 3
+          prompt: |
+            O deploy do ecossistema farpa.ai acabou de completar.
+            Leia CLAUDE.md e escreva em /tmp/deploy-summary.md um relatório conciso de deploy:
+
+            # Deploy Completo — farpa.ai
+            Data: (data atual)
+
+            Status: (sucesso/parcial/falha)
+
+            Produtos deployados com sucesso + links dos subdomínios.
+            Qualquer aviso ou próximo passo relevante baseado nas regras do CLAUDE.md.
+
+            Máximo 20 linhas. Formato executivo — sem jargão técnico desnecessário.
+
+      - name: Append to step summary
+        run: |
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          if [ -f /tmp/deploy-summary.md ]; then
+            cat /tmp/deploy-summary.md >> $GITHUB_STEP_SUMMARY
+          fi

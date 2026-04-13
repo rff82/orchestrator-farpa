@@ -1,0 +1,102 @@
+{
+  "github_user": "rff82",
+  "orchestrator_repo": "orchestrator-farpa",
+  "products": [
+    {
+      "repo": "AI",
+      "display_name": "farpa.ai",
+      "subdomain": "farpa.ai",
+      "cf_pages_project": "farpa-main",
+      "workers": ["farpa-proxy", "api-leads"],
+      "worker_dir": "workers",
+      "d1_databases": [
+        { "name": "farpa-db", "id": "17e479be-1985-416d-b475-997832449719" }
+      ],
+      "kv_namespaces": [],
+      "has_worker": true,
+      "static_only": false,
+      "status": "live",
+      "worker_secrets": ["ANTHROPIC_API_KEY", "ALLOWED_ORIGIN"]
+    },
+    {
+      "repo": "labs-farpa-ai",
+      "display_name": "farpa Labs",
+      "subdomain": "labs.farpa.ai",
+      "cf_pages_project": "labs-farpa-ai",
+      "workers": [],
+      "worker_dir": "",
+      "d1_databases": [],
+      "kv_namespaces": [],
+      "has_worker": false,
+      "static_only": true,
+      "status": "in_progress",
+      "worker_secrets": ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "ALLOWED_ORIGIN"]
+    },
+    {
+      "repo": "health-farpa-ai",
+      "display_name": "farpa Health",
+      "subdomain": "health.farpa.ai",
+      "cf_pages_project": "health-farpa-ai",
+      "workers": ["health-worker"],
+      "worker_dir": "workers/health-worker",
+      "d1_databases": [
+        { "name": "health-farpa-ai-db", "id": "" }
+      ],
+      "kv_namespaces": [
+        { "name": "HEALTH_CACHE", "id": "" }
+      ],
+      "has_worker": true,
+      "static_only": false,
+      "status": "in_progress",
+      "worker_secrets": ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_IMAGEN_API_KEY", "ALLOWED_ORIGIN"]
+    },
+    {
+      "repo": "fintech-farpa.ai",
+      "display_name": "farpa Fintech",
+      "subdomain": "fintech.farpa.ai",
+      "cf_pages_project": "fintech-farpa-ai",
+      "workers": ["fintech-worker"],
+      "worker_dir": "workers/fintech-worker",
+      "d1_databases": [
+        { "name": "fintech-farpa-ai-db", "id": "" }
+      ],
+      "kv_namespaces": [
+        { "name": "FINTECH_CACHE", "id": "" }
+      ],
+      "has_worker": true,
+      "static_only": false,
+      "status": "in_progress",
+      "worker_secrets": ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "ALLOWED_ORIGIN"]
+    },
+    {
+      "repo": "libery-farpa-ai",
+      "display_name": "farpa Library",
+      "subdomain": "library.farpa.ai",
+      "cf_pages_project": "libery-farpa-ai",
+      "workers": ["libery-worker"],
+      "worker_dir": "workers/libery-worker",
+      "d1_databases": [
+        { "name": "libery-farpa-ai-db", "id": "" }
+      ],
+      "kv_namespaces": [],
+      "has_worker": true,
+      "static_only": false,
+      "status": "in_progress",
+      "worker_secrets": ["ANTHROPIC_API_KEY", "ALLOWED_ORIGIN"]
+    },
+    {
+      "repo": "docs-farpa-ai",
+      "display_name": "farpa Docs",
+      "subdomain": "docs.farpa.ai",
+      "cf_pages_project": "docs-farpa-ai",
+      "workers": [],
+      "worker_dir": "",
+      "d1_databases": [],
+      "kv_namespaces": [],
+      "has_worker": false,
+      "static_only": true,
+      "status": "planned",
+      "worker_secrets": []
+    }
+  ]
+}

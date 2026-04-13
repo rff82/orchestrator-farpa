@@ -1,0 +1,34 @@
+{
+  // rff82/{{REPO_NAME}} — Cloudflare Worker config
+  // Gerado por rff82/orchestrator-farpa · provision.yml
+  "name": "{{WORKER_NAME}}",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "observability": {
+    "enabled": true
+  }
+
+  {{#if HAS_D1}}
+  , "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "{{D1_DATABASE_NAME}}",
+      "database_id": "{{D1_DATABASE_ID}}"
+    }
+  ]
+  {{/if}}
+
+  {{#if HAS_KV}}
+  , "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "{{KV_NAMESPACE_ID}}"
+    }
+  ]
+  {{/if}}
+
+  // Secrets configurados via: wrangler secret put NOME
+  // Obrigatórios: ANTHROPIC_API_KEY, ALLOWED_ORIGIN
+}

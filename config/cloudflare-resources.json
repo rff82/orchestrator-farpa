@@ -1,0 +1,36 @@
+{
+  "_comment": "Estado esperado dos recursos Cloudflare. Usado por audit.yml para cruzar com estado real.",
+  "pages_projects": [
+    "farpa-main",
+    "labs-farpa-ai",
+    "health-farpa-ai",
+    "fintech-farpa-ai",
+    "libery-farpa-ai",
+    "docs-farpa-ai"
+  ],
+  "workers": [
+    "farpa-proxy",
+    "api-leads",
+    "health-worker",
+    "fintech-worker",
+    "libery-worker"
+  ],
+  "d1_databases": [
+    "farpa-db",
+    "health-farpa-ai-db",
+    "fintech-farpa-ai-db",
+    "libery-farpa-ai-db"
+  ],
+  "kv_namespaces": [
+    "HEALTH_CACHE",
+    "FINTECH_CACHE"
+  ],
+  "subdomains": [
+    "farpa.ai",
+    "labs.farpa.ai",
+    "health.farpa.ai",
+    "fintech.farpa.ai",
+    "library.farpa.ai",
+    "docs.farpa.ai"
+  ]
+}

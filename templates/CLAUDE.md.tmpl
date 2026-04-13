@@ -1,0 +1,136 @@
+# CLAUDE.md — farpa {{PRODUCT_DISPLAY_NAME}}
+> Arquivo de contexto automático · rff82/{{REPO_NAME}} · v1.0 · {{DATE}}
+> Gerado pelo orchestrator-farpa · rff82/orchestrator-farpa
+
+---
+
+## IDENTIDADE DO PRODUTO
+
+**{{SUBDOMAIN}}** é [DESCREVER O PRODUTO AQUI].
+Parte do ecossistema farpa.ai. Construído por Rodrigo.
+
+Objetivo estratégico: presentation-ready para executivos.
+
+---
+
+## ECOSSISTEMA
+
+| Produto | Repo | Subdomínio |
+|---|---|---|
+| farpa.ai (principal) | rff82/AI | farpa.ai |
+| **{{PRODUCT_DISPLAY_NAME}} (este)** | rff82/{{REPO_NAME}} | {{SUBDOMAIN}} |
+| farpa Labs | rff82/labs-farpa-ai | labs.farpa.ai |
+| farpa Health | rff82/health-farpa-ai | health.farpa.ai |
+| farpa Fintech | rff82/fintech-farpa.ai | fintech.farpa.ai |
+| farpa Library | rff82/libery-farpa-ai | library.farpa.ai |
+| farpa Docs | rff82/docs-farpa-ai | docs.farpa.ai |
+
+---
+
+## ESTRUTURA DO REPOSITÓRIO
+
+```
+/
+├── index.html              ← home
+├── tokens.css              ← ⛔ não modificar sem versionar
+├── themes.css              ← ⛔ não modificar sem versionar
+├── components.css          ← ⛔ não modificar sem versionar
+├── theme-engine.js         ← ⛔ não modificar sem versionar
+{{#if HAS_WORKER}}
+├── workers/
+│   └── {{WORKER_NAME}}/    ← Cloudflare Worker
+│       ├── src/index.ts
+│       └── wrangler.jsonc
+{{/if}}
+└── CLAUDE.md               ← este arquivo
+```
+
+---
+
+## DESIGN SYSTEM
+
+```
+Paleta principal:  Índigo #4338CA (primary) + Âmbar #F59E0B (accent)
+Tipografia:        Plus Jakarta Sans (display/UI) + JetBrains Mono (dados/código)
+Temas:             Claro · Escuro · Sépia · Alto Contraste · Trader
+Arquivos core:     tokens.css → themes.css → components.css → theme-engine.js
+Load order:        NUNCA alterar a ordem dos <link> e <script>
+```
+
+### Alto contraste — REGRA INEGOCIÁVEL
+
+O botão de alto contraste deve estar **sempre visível no header**, em todas as páginas.
+Rodrigo tem baixa visão — isso é requisito de existência, não feature opcional.
+
+```javascript
+// Implementação padrão — não modificar
+const btn = document.getElementById('btn-alto-contraste');
+btn.addEventListener('click', () => {
+  document.body.classList.toggle('theme-alto-contraste');
+  localStorage.setItem('farpa-tema', document.body.className);
+});
+const temasSalvos = localStorage.getItem('farpa-tema');
+if (temasSalvos) document.body.className = temasSalvos;
+```
+
+---
+
+## INFRAESTRUTURA
+
+```
+Repositório:   github.com/rff82/{{REPO_NAME}} (branch: main)
+Deploy:        Cloudflare Pages ← GitHub CI (.github/workflows/ci.yml)
+Pages project: {{CF_PAGES_PROJECT}}
+{{#if HAS_WORKER}}
+Worker:        {{WORKER_NAME}}
+{{/if}}
+{{#if HAS_D1}}
+D1 database:   {{D1_DATABASE_NAME}} (ID: {{D1_DATABASE_ID}})
+{{/if}}
+{{#if HAS_KV}}
+KV namespace:  {{KV_NAMESPACE_NAME}} (ID: {{KV_NAMESPACE_ID}})
+{{/if}}
+```
+
+{{#if HAS_WORKER}}
+### Workers — rotas do {{WORKER_NAME}}
+
+| Rota | Função |
+|---|---|
+| `GET /health` | Health check |
+| `POST /ai` | Anthropic API (key em secret) |
+
+### Retry padrão
+
+`fetchWithRetry()` — 5 tentativas, backoff exponencial: 500ms → 1s → 2s → 4s → 8s.
+Aplicar em **toda** chamada externa.
+{{/if}}
+
+---
+
+## REGRAS INEGOCIÁVEIS
+
+- **Alto contraste sempre visível** — botão no header de toda página
+- **WCAG AA mínimo** — checar contraste antes de qualquer push
+- **API keys nunca no cliente** — sempre `wrangler secret put`
+- **Cores nunca hardcoded** — sempre `var(--token)`
+- **Tipografia imutável** — Plus Jakarta Sans + JetBrains Mono
+- **Nunca modificar** tokens.css / themes.css / theme-engine.js sem versionar
+- **Vercel nunca em produção** — apenas Cloudflare Pages
+- **Todos os arquivos HTML na raiz** — sem subpastas para páginas
+
+---
+
+## FLUXO DE TRABALHO
+
+```
+Criar/editar arquivo
+  → git add . && git commit -m "feat|fix|redesign|refactor|chore|content|infra: descrição"
+  → git push origin main
+  → Cloudflare Pages deploy automático (~2 min)
+  → Confirmar em {{SUBDOMAIN}}
+```
+
+---
+
+*farpa.ai · rff82/{{REPO_NAME}} · CLAUDE.md · v1.0 · {{DATE}}*

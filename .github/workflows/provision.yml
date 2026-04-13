@@ -1,0 +1,469 @@
+name: "Provision — Create New Product"
+
+on:
+  workflow_dispatch:
+    inputs:
+      product_name:
+        description: "Slug do produto (ex: radar). Gerará rff82/radar-farpa-ai"
+        required: true
+        type: string
+      subdomain:
+        description: "Subdomínio (ex: radar). Gerará radar.farpa.ai"
+        required: true
+        type: string
+      has_worker:
+        description: "Criar Cloudflare Worker para este produto"
+        required: false
+        default: true
+        type: boolean
+      has_d1:
+        description: "Criar banco D1 para este produto"
+        required: false
+        default: true
+        type: boolean
+      has_kv:
+        description: "Criar KV namespace para este produto"
+        required: false
+        default: false
+        type: boolean
+      claude_generate_claude_md:
+        description: "Usar Claude para gerar CLAUDE.md do novo produto"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # Job 1: Claude valida nomenclatura e conflitos
+  # ─────────────────────────────────────────────────────────────────
+  preflight-check:
+    name: Claude Preflight Check
+    runs-on: ubuntu-latest
+    outputs:
+      approved: ${{ steps.check.outputs.approved }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Claude preflight validation
+        id: claude-check
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Write"
+          max_turns: 3
+          prompt: |
+            Valide o provisionamento de novo produto para o ecossistema farpa.ai.
+
+            Produto solicitado:
+            - product_name: ${{ inputs.product_name }}
+            - subdomain: ${{ inputs.subdomain }}
+            - has_worker: ${{ inputs.has_worker }}
+            - has_d1: ${{ inputs.has_d1 }}
+            - has_kv: ${{ inputs.has_kv }}
+
+            Leia CLAUDE.md e config/ecosystem.json.
+
+            Valide:
+            1. product_name segue naming convention (só letras minúsculas, números e hífens)
+            2. Não conflita com produto existente em ecosystem.json (nem repo, nem subdomain)
+            3. O repo resultante seria: rff82/${{ inputs.product_name }}-farpa-ai
+            4. O subdomínio resultante seria: ${{ inputs.subdomain }}.farpa.ai
+
+            Escreva em /tmp/preflight-result.json:
+            {"approved": true/false, "reason": "...", "repo_name": "...", "cf_pages_project": "..."}
+
+      - name: Parse preflight result
+        id: check
+        run: |
+          if [ -f /tmp/preflight-result.json ]; then
+            APPROVED=$(jq -r '.approved' /tmp/preflight-result.json 2>/dev/null || echo "true")
+            REASON=$(jq -r '.reason' /tmp/preflight-result.json 2>/dev/null || echo "OK")
+            echo "approved=$APPROVED" >> $GITHUB_OUTPUT
+            echo "Preflight: approved=$APPROVED reason=$REASON"
+          else
+            echo "approved=true" >> $GITHUB_OUTPUT
+          fi
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 2: Criar repositório GitHub
+  # ─────────────────────────────────────────────────────────────────
+  create-github-repo:
+    name: Create GitHub Repo
+    runs-on: ubuntu-latest
+    needs: preflight-check
+    if: needs.preflight-check.outputs.approved == 'true'
+    outputs:
+      repo_name: ${{ steps.create.outputs.repo_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub repo
+        id: create
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          REPO_NAME="${{ inputs.product_name }}-farpa-ai"
+          echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+
+          # Criar repo
+          gh repo create "rff82/$REPO_NAME" \
+            --public \
+            --description "farpa ${{ inputs.product_name }} — parte do ecossistema farpa.ai" \
+            --gitignore Node \
+            || echo "AVISO: Repo pode já existir"
+
+          # Aguardar criação
+          sleep 5
+
+          # Criar index.html skeleton
+          PAGES_PROJECT="${{ inputs.product_name }}-farpa-ai"
+          INDEX_CONTENT=$(cat << 'HTML'
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>farpa PRODUCT_NAME</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="components.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="https://farpa.ai">farpa.ai</a>
+      <button id="btn-alto-contraste" aria-label="Alto Contraste">◑</button>
+    </nav>
+  </header>
+  <main>
+    <h1>farpa PRODUCT_DISPLAY — Em breve</h1>
+  </main>
+  <script src="theme-engine.js"></script>
+</body>
+</html>
+HTML
+)
+          CONTENT_B64=$(echo "$INDEX_CONTENT" | base64 -w 0)
+          gh api "repos/rff82/$REPO_NAME/contents/index.html" \
+            -X PUT \
+            -f message="feat: initial scaffold — generated by orchestrator-farpa" \
+            -f content="$CONTENT_B64" \
+            || echo "AVISO: Falha ao criar index.html"
+
+          echo "✓ Repo criado: rff82/$REPO_NAME"
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 3: Claude gera CLAUDE.md do produto
+  # ─────────────────────────────────────────────────────────────────
+  generate-claude-md:
+    name: Generate Product CLAUDE.md
+    runs-on: ubuntu-latest
+    needs: create-github-repo
+    if: ${{ inputs.claude_generate_claude_md == true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Claude generate CLAUDE.md
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Write"
+          max_turns: 5
+          prompt: |
+            Gere um CLAUDE.md completo para o novo produto do ecossistema farpa.ai.
+
+            Dados do produto:
+            - product_name: ${{ inputs.product_name }}
+            - display_name: farpa ${{ inputs.product_name }}
+            - repo_name: ${{ inputs.product_name }}-farpa-ai
+            - subdomain: ${{ inputs.subdomain }}.farpa.ai
+            - cf_pages_project: ${{ inputs.product_name }}-farpa-ai
+            - has_worker: ${{ inputs.has_worker }}
+            - worker_name: ${{ inputs.product_name }}-worker
+            - has_d1: ${{ inputs.has_d1 }}
+            - d1_name: ${{ inputs.product_name }}-farpa-ai-db
+            - has_kv: ${{ inputs.has_kv }}
+            - kv_name: ${{ inputs.product_name | upper }}_CACHE
+            - date: $(date -u +%Y-%m-%d)
+
+            Leia CLAUDE.md (contexto do orchestrator) e templates/CLAUDE.md.tmpl.
+            Use o template como base, substituindo todos os placeholders com os dados acima.
+            Siga exatamente a estrutura do template. Não invente seções novas.
+
+            Escreva o resultado em /tmp/new-product-claude-md.md
+
+      - name: Push CLAUDE.md to product repo
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          REPO_NAME="${{ inputs.product_name }}-farpa-ai"
+          if [ -f /tmp/new-product-claude-md.md ]; then
+            CONTENT_B64=$(base64 -w 0 < /tmp/new-product-claude-md.md)
+            SHA=$(gh api "repos/rff82/$REPO_NAME/contents/CLAUDE.md" --jq '.sha' 2>/dev/null || echo "")
+            if [ -n "$SHA" ]; then
+              gh api "repos/rff82/$REPO_NAME/contents/CLAUDE.md" \
+                -X PUT \
+                -f message="docs: add CLAUDE.md — generated by orchestrator-farpa" \
+                -f content="$CONTENT_B64" \
+                -f sha="$SHA"
+            else
+              gh api "repos/rff82/$REPO_NAME/contents/CLAUDE.md" \
+                -X PUT \
+                -f message="docs: add CLAUDE.md — generated by orchestrator-farpa" \
+                -f content="$CONTENT_B64"
+            fi
+            echo "✓ CLAUDE.md criado em rff82/$REPO_NAME"
+          fi
+
+      - name: Push ci.yml from template
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          REPO_NAME="${{ inputs.product_name }}-farpa-ai"
+          CF_PAGES="${{ inputs.product_name }}-farpa-ai"
+          SUBDOMAIN="${{ inputs.subdomain }}.farpa.ai"
+
+          CI_CONTENT=$(sed \
+            -e "s/{{PRODUCT_DISPLAY_NAME}}/farpa ${{ inputs.product_name }}/g" \
+            -e "s/{{REPO_NAME}}/$REPO_NAME/g" \
+            -e "s/{{SUBDOMAIN}}/$SUBDOMAIN/g" \
+            -e "s/{{CF_PAGES_PROJECT}}/$CF_PAGES/g" \
+            templates/ci.yml.tmpl)
+
+          CONTENT_B64=$(echo "$CI_CONTENT" | base64 -w 0)
+          gh api "repos/rff82/$REPO_NAME/contents/.github/workflows/ci.yml" \
+            -X PUT \
+            -f message="infra: add CI/CD workflow — generated by orchestrator-farpa" \
+            -f content="$CONTENT_B64" \
+            || echo "AVISO: Falha ao criar ci.yml"
+          echo "✓ ci.yml criado em rff82/$REPO_NAME"
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 4: Provisionar recursos Cloudflare
+  # ─────────────────────────────────────────────────────────────────
+  provision-cloudflare:
+    name: Provision Cloudflare Resources
+    runs-on: ubuntu-latest
+    needs: create-github-repo
+    outputs:
+      d1_id: ${{ steps.ids.outputs.d1_id }}
+      kv_id: ${{ steps.ids.outputs.kv_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Provision Cloudflare resources
+        id: provision
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          chmod +x scripts/provision-product.sh
+          scripts/provision-product.sh \
+            "${{ inputs.product_name }}" \
+            "${{ inputs.has_d1 }}" \
+            "${{ inputs.has_kv }}"
+
+      - name: Capture IDs
+        id: ids
+        run: |
+          if [ -f /tmp/provision-ids.json ]; then
+            D1_ID=$(jq -r '.d1_id // ""' /tmp/provision-ids.json)
+            KV_ID=$(jq -r '.kv_id // ""' /tmp/provision-ids.json)
+            echo "d1_id=$D1_ID" >> $GITHUB_OUTPUT
+            echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
+          fi
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 5: Configurar DNS no Cloudflare
+  # ─────────────────────────────────────────────────────────────────
+  configure-dns:
+    name: Configure DNS
+    runs-on: ubuntu-latest
+    needs: provision-cloudflare
+    steps:
+      - name: Create CNAME record
+        run: |
+          CNAME_TARGET="${{ inputs.product_name }}-farpa-ai.pages.dev"
+          echo "Criando CNAME: ${{ inputs.subdomain }}.farpa.ai → $CNAME_TARGET"
+
+          RESPONSE=$(curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/dns_records" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data "{
+              \"type\": \"CNAME\",
+              \"name\": \"${{ inputs.subdomain }}\",
+              \"content\": \"$CNAME_TARGET\",
+              \"proxied\": true
+            }")
+
+          SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
+          if [ "$SUCCESS" = "true" ]; then
+            echo "✓ CNAME criado: ${{ inputs.subdomain }}.farpa.ai → $CNAME_TARGET"
+          else
+            echo "AVISO: $(echo $RESPONSE | jq -r '.errors[0].message // "Erro desconhecido"')"
+            echo "Pode ser que o registro já exista."
+          fi
+
+      - name: Add custom domain to Pages project
+        run: |
+          echo "Adicionando domínio customizado ao Pages project..."
+          RESPONSE=$(curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/pages/projects/${{ inputs.product_name }}-farpa-ai/domains" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data "{\"name\": \"${{ inputs.subdomain }}.farpa.ai\"}")
+
+          SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
+          if [ "$SUCCESS" = "true" ]; then
+            echo "✓ Domínio ${{ inputs.subdomain }}.farpa.ai adicionado ao Pages project"
+          else
+            echo "AVISO: $(echo $RESPONSE | jq -r '.errors[0].message // "Erro desconhecido"')"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 6: Atualizar ecosystem.json no orchestrator
+  # ─────────────────────────────────────────────────────────────────
+  update-ecosystem-config:
+    name: Update Ecosystem Config
+    runs-on: ubuntu-latest
+    needs: [provision-cloudflare, configure-dns]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Update ecosystem.json
+        run: |
+          REPO_NAME="${{ inputs.product_name }}-farpa-ai"
+          D1_ID="${{ needs.provision-cloudflare.outputs.d1_id }}"
+          KV_ID="${{ needs.provision-cloudflare.outputs.kv_id }}"
+
+          NEW_PRODUCT=$(jq -n \
+            --arg repo "$REPO_NAME" \
+            --arg display "farpa ${{ inputs.product_name }}" \
+            --arg subdomain "${{ inputs.subdomain }}.farpa.ai" \
+            --arg pages "${{ inputs.product_name }}-farpa-ai" \
+            --argjson has_worker "${{ inputs.has_worker }}" \
+            --argjson has_d1 "${{ inputs.has_d1 }}" \
+            --argjson has_kv "${{ inputs.has_kv }}" \
+            --arg d1_id "$D1_ID" \
+            --arg kv_id "$KV_ID" \
+            '{
+              repo: $repo,
+              display_name: $display,
+              subdomain: $subdomain,
+              cf_pages_project: $pages,
+              workers: (if $has_worker then [($repo | split("-farpa-ai")[0] + "-worker")] else [] end),
+              worker_dir: (if $has_worker then "workers" else "" end),
+              d1_databases: (if $has_d1 then [{"name": ($repo | split(".")[0] + "-db"), "id": $d1_id}] else [] end),
+              kv_namespaces: (if $has_kv then [{"name": (($repo | split("-farpa-ai")[0] | ascii_upcase) + "_CACHE"), "id": $kv_id}] else [] end),
+              has_worker: $has_worker,
+              static_only: ($has_worker | not),
+              status: "in_progress",
+              worker_secrets: ["ANTHROPIC_API_KEY", "ALLOWED_ORIGIN"]
+            }')
+
+          jq --argjson p "$NEW_PRODUCT" '.products += [$p]' \
+            config/ecosystem.json > /tmp/ecosystem-new.json
+          mv /tmp/ecosystem-new.json config/ecosystem.json
+
+          # Atualizar cloudflare-resources.json
+          if [ "${{ inputs.has_d1 }}" = "true" ]; then
+            jq --arg d "${{ inputs.product_name }}-farpa-ai-db" \
+              '.d1_databases += [$d]' \
+              config/cloudflare-resources.json > /tmp/cf-new.json
+            mv /tmp/cf-new.json config/cloudflare-resources.json
+          fi
+
+          jq --arg p "${{ inputs.product_name }}-farpa-ai" \
+            '.pages_projects += [$p]' \
+            config/cloudflare-resources.json > /tmp/cf-new.json
+          mv /tmp/cf-new.json config/cloudflare-resources.json
+
+          jq --arg s "${{ inputs.subdomain }}.farpa.ai" \
+            '.subdomains += [$s]' \
+            config/cloudflare-resources.json > /tmp/cf-new.json
+          mv /tmp/cf-new.json config/cloudflare-resources.json
+
+      - name: Commit and push config updates
+        run: |
+          git config user.name "orchestrator-farpa[bot]"
+          git config user.email "orchestrator@farpa.ai"
+          git add config/ecosystem.json config/cloudflare-resources.json
+          git commit -m "infra: add ${{ inputs.product_name }}-farpa-ai to ecosystem config" \
+            || echo "Nenhuma mudança para commitar"
+          git push || echo "AVISO: Falha no push"
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 7: Claude gera Issue de conclusão com checklist
+  # ─────────────────────────────────────────────────────────────────
+  provision-summary:
+    name: Provision Summary Issue
+    runs-on: ubuntu-latest
+    needs: [update-ecosystem-config, generate-claude-md, configure-dns]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Claude provision summary
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Write"
+          max_turns: 3
+          prompt: |
+            O provisionamento do novo produto farpa.${{ inputs.product_name }} foi concluído.
+            Leia CLAUDE.md e escreva em /tmp/provision-summary.md um Issue de conclusão:
+
+            # [PROVISIONED] ${{ inputs.subdomain }}.farpa.ai — Setup Completo
+
+            ## O que foi criado
+            - Repo GitHub: rff82/${{ inputs.product_name }}-farpa-ai
+            - Cloudflare Pages: ${{ inputs.product_name }}-farpa-ai
+            - Subdomínio: ${{ inputs.subdomain }}.farpa.ai
+            - D1: (sim/não baseado em has_d1=${{ inputs.has_d1 }})
+            - KV: (sim/não baseado em has_kv=${{ inputs.has_kv }})
+            - Worker: (sim/não baseado em has_worker=${{ inputs.has_worker }})
+
+            ## Checklist Pós-Provisionamento (fazer manualmente)
+            - [ ] Conectar repo ao Cloudflare Pages via GitHub (Settings → Integrations)
+            - [ ] Adicionar secret CLOUDFLARE_API_TOKEN no repo (gh secret set)
+            - [ ] Adicionar secret CLOUDFLARE_ACCOUNT_ID no repo (gh secret set)
+            - [ ] Adicionar secret GH_PAT no repo (para notify-orchestrator)
+            - [ ] (Se Worker) wrangler secret put ANTHROPIC_API_KEY --name ${{ inputs.product_name }}-worker
+            - [ ] (Se Worker) wrangler secret put ALLOWED_ORIGIN --name ${{ inputs.product_name }}-worker
+            - [ ] Verificar propagação DNS em ${{ inputs.subdomain }}.farpa.ai (~5 min)
+            - [ ] Fazer primeiro deploy manual para ativar o Pages project
+
+            ---
+            *Gerado por rff82/orchestrator-farpa · provision.yml · $(date -u +%Y-%m-%d)*
+
+      - name: Create GitHub Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BODY_FILE="/tmp/provision-summary.md"
+          if [ ! -f "$BODY_FILE" ]; then
+            echo "## Provisionamento Concluído\nVer logs do workflow para detalhes." > "$BODY_FILE"
+          fi
+          gh issue create \
+            --repo rff82/orchestrator-farpa \
+            --title "[PROVISIONED] ${{ inputs.subdomain }}.farpa.ai — Setup Completo" \
+            --body-file "$BODY_FILE" \
+            --label "provisioning,infrastructure" \
+            --assignee "rff82"

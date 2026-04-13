@@ -1,0 +1,149 @@
+name: "Audit — Cloudflare Health Check"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *" # Diário às 07:00 UTC
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # Job 1: Coletar estado real do Cloudflare e verificar subdomínios
+  # ─────────────────────────────────────────────────────────────────
+  audit-cloudflare:
+    name: Audit Cloudflare Resources
+    runs-on: ubuntu-latest
+    outputs:
+      has_issues: ${{ steps.check.outputs.has_issues }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Run audit script
+        id: audit
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          chmod +x scripts/audit-cloudflare.sh
+          scripts/audit-cloudflare.sh && echo "has_issues=false" >> $GITHUB_OUTPUT \
+            || echo "has_issues=true" >> $GITHUB_OUTPUT
+
+      - name: Check for issues
+        id: check
+        run: |
+          echo "has_issues=${{ steps.audit.outputs.has_issues || 'true' }}" >> $GITHUB_OUTPUT
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-report
+          path: /tmp/audit-report.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 2: Claude analisa o relatório e gera Issue body
+  # ─────────────────────────────────────────────────────────────────
+  claude-analysis:
+    name: Claude Audit Analysis
+    runs-on: ubuntu-latest
+    needs: audit-cloudflare
+    if: always()
+    outputs:
+      issue_body_file: /tmp/issue-body.md
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download audit report
+        uses: actions/download-artifact@v4
+        with:
+          name: audit-report
+          path: /tmp/
+
+      - name: Copy audit report to workspace
+        run: cp /tmp/audit-report.json ./audit-report.json
+
+      - name: Claude analysis
+        uses: anthropic/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Write"
+          max_turns: 5
+          prompt: |
+            Você é o auditor de infraestrutura do farpa.ai. Leia CLAUDE.md (contexto do ecossistema)
+            e audit-report.json (estado real do Cloudflare).
+
+            Seu trabalho:
+            1. Identificar itens Críticos (recurso ausente ou subdomínio down — HTTP != 200/301/302)
+            2. Identificar Warnings (recurso inesperado não listado no ecossistema)
+            3. Listar itens OK
+
+            Para cada item Crítico, forneça o comando wrangler exato de correção:
+            - Pages faltando: `wrangler pages project create {nome} --production-branch main`
+            - D1 faltando: `wrangler d1 create {nome}`
+            - KV faltando: `wrangler kv namespace create {NOME}`
+            - Worker faltando: verificar repo e rodar `wrangler deploy` no diretório correto
+
+            Escreva o resultado em /tmp/issue-body.md no formato Markdown limpo:
+            - Título H2: "## Status da Infraestrutura farpa.ai"
+            - Seção "### Crítico" (se houver)
+            - Seção "### Warning" (se houver)
+            - Seção "### OK"
+            - Seção "### Comandos de Correção" (se houver itens críticos)
+            - Rodapé: "---\n*Gerado automaticamente por rff82/orchestrator-farpa · audit.yml*"
+
+            Se tudo estiver OK, escreva apenas: "ALL_OK" no arquivo.
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 3: Criar GitHub Issue com o relatório do Claude
+  # ─────────────────────────────────────────────────────────────────
+  create-issue:
+    name: Create GitHub Issue
+    runs-on: ubuntu-latest
+    needs: claude-analysis
+    if: needs.audit-cloudflare.outputs.has_issues == 'true'
+    steps:
+      - name: Download issue body
+        uses: actions/download-artifact@v4
+        with:
+          name: audit-report
+          path: /tmp/
+
+      - name: Check if issue needed
+        id: check
+        run: |
+          if [ -f /tmp/issue-body.md ] && grep -q "ALL_OK" /tmp/issue-body.md 2>/dev/null; then
+            echo "create=false" >> $GITHUB_OUTPUT
+          else
+            echo "create=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Issue
+        if: steps.check.outputs.create == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BODY_FILE="/tmp/issue-body.md"
+          TITLE="[AUDIT] Cloudflare Health Report — $(date -u +%Y-%m-%d)"
+
+          if [ ! -f "$BODY_FILE" ]; then
+            echo "## Audit Report\nArquivo de análise não gerado. Ver logs do workflow." > /tmp/fallback.md
+            BODY_FILE="/tmp/fallback.md"
+          fi
+
+          gh issue create \
+            --repo rff82/orchestrator-farpa \
+            --title "$TITLE" \
+            --body-file "$BODY_FILE" \
+            --label "audit,infrastructure,automated" \
+            --assignee "rff82"

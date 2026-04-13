@@ -1,0 +1,31 @@
+-- D1 Schema — {{PRODUCT_DISPLAY_NAME}}
+-- Banco: {{D1_DATABASE_NAME}}
+-- Gerado por rff82/orchestrator-farpa · provision.yml
+-- Data: {{DATE}}
+-- Aplicar: wrangler d1 execute {{D1_DATABASE_NAME}} --file=schema.sql
+
+PRAGMA journal_mode = WAL;
+
+-- Tabela de leads/usuários (padrão do ecossistema farpa)
+CREATE TABLE IF NOT EXISTS leads (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  email      TEXT    NOT NULL UNIQUE,
+  name       TEXT,
+  source     TEXT    DEFAULT '{{SUBDOMAIN}}',
+  created_at TEXT    DEFAULT (datetime('now')),
+  updated_at TEXT    DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
+CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source);
+
+-- Tabela de eventos/analytics (edge-side, sem PII)
+CREATE TABLE IF NOT EXISTS events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  type       TEXT    NOT NULL,
+  payload    TEXT,
+  created_at TEXT    DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
+CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at);
