@@ -8,7 +8,7 @@
 #
 #  Uso: ./provision-product.sh <product_name> [has_d1] [has_kv]
 #  Chamado por: .github/workflows/provision.yml
-#  Requer: wrangler autenticado via CF_API_TOKEN + CF_ACCOUNT_ID
+#  Requer: wrangler autenticado via CF_TOKEN_PROVISION + CF_ACCOUNT_ID
 # ══════════════════════════════════════════════════════════════════
 set -euo pipefail
 

@@ -32,7 +32,7 @@ jobs:
       - name: Run audit script
         id: audit
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_TOKEN_READ }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         run: |
           chmod +x scripts/audit-cloudflare.sh

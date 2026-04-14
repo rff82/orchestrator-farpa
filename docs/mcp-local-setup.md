@@ -122,7 +122,7 @@ O plugin GitHub já está instalado. Para usar o MCP completo:
       "command": "npx",
       "args": ["-y", "@cloudflare/mcp-server-cloudflare"],
       "env": {
-        "CLOUDFLARE_API_TOKEN": "SUA_CF_API_TOKEN",
+        "CLOUDFLARE_API_TOKEN": "USE_CF_TOKEN_PROVISION_OU_READ",
         "CLOUDFLARE_ACCOUNT_ID": "SEU_CF_ACCOUNT_ID"
       }
     },

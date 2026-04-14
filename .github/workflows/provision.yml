@@ -278,7 +278,7 @@ HTML
       - name: Provision Cloudflare resources
         id: provision
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_TOKEN_PROVISION }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         run: |
           chmod +x scripts/provision-product.sh
@@ -312,7 +312,7 @@ HTML
 
           RESPONSE=$(curl -s -X POST \
             "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/dns_records" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Authorization: Bearer ${{ secrets.CF_TOKEN_DNS }}" \
             -H "Content-Type: application/json" \
             --data "{
               \"type\": \"CNAME\",
@@ -334,7 +334,7 @@ HTML
           echo "Adicionando domínio customizado ao Pages project..."
           RESPONSE=$(curl -s -X POST \
             "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/pages/projects/${{ inputs.product_name }}-farpa-ai/domains" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Authorization: Bearer ${{ secrets.CF_TOKEN_DNS }}" \
             -H "Content-Type: application/json" \
             --data "{\"name\": \"${{ inputs.subdomain }}.farpa.ai\"}")
 

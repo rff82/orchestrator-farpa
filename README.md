@@ -46,26 +46,34 @@ Actions → **Sync — Validate All rff82 Repos** → Run workflow
 
 ## Secrets necessários
 
-Configurar em: Settings → Secrets and variables → Actions
+Configurar em: **Settings → Secrets and variables → Actions**
 
-### Obrigatórios (sem eles nenhum workflow funciona)
+### Anthropic + GitHub
 
 | Secret | Descrição | Onde obter |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Claude AI — todos os workflows | console.anthropic.com |
-| `CF_API_TOKEN` | Cloudflare API Token (Pages+Workers+D1+KV+DNS Edit) | dash.cloudflare.com → API Tokens |
-| `CF_ACCOUNT_ID` | Cloudflare Account ID | dash.cloudflare.com → sidebar |
 | `GH_PAT` | GitHub PAT escopos: `repo` + `workflow` | github.com → Settings → Developer settings → PAT |
 
-### Para Google integrations
+### Cloudflare — 4 tokens segregados por escopo mínimo
 
-| Secret | Descrição | Onde obter |
-|---|---|---|
-| `CF_ZONE_ID` | Cloudflare Zone ID (farpa.ai) — provision DNS | dash.cloudflare.com → farpa.ai → Overview |
-| `GEMINI_API_KEY` | Gemini API — audit Search Grounding | aistudio.google.com → Get API Key |
-| `GOOGLE_IMAGEN_API_KEY` | Imagen 3 — provision hero images | aistudio.google.com → Get API Key |
+> Criar em: dash.cloudflare.com → My Profile → API Tokens → **Create Token → Custom Token**
 
-> `GEMINI_API_KEY` e `GOOGLE_IMAGEN_API_KEY` podem ser a mesma key do Google AI Studio.
+| Secret | Permissões necessárias | Nível | Workflow |
+|---|---|---|---|
+| `CF_TOKEN_READ` | Pages:Read, Workers Scripts:Read, D1:Read, Workers KV Storage:Read | Account | `audit.yml` |
+| `CF_TOKEN_DEPLOY` | Cloudflare Pages:Edit, Workers Scripts:Edit | Account | `deploy.yml` |
+| `CF_TOKEN_PROVISION` | Pages:Edit, Workers Scripts:Edit, D1:Edit, Workers KV Storage:Edit | Account | `provision.yml` |
+| `CF_TOKEN_DNS` | DNS:Edit | Zone → farpa.ai | `provision.yml` |
+| `CF_ACCOUNT_ID` | — (não é token, é ID público) | — | Todos |
+
+### Google (opcionais mas recomendados)
+
+| Secret | Descrição | Custo | Onde obter |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Gemini + Search Grounding no audit | **Free tier** | aistudio.google.com → Get API Key |
+| `GOOGLE_IMAGEN_API_KEY` | Imagen 3 no provision (default off) | ~$0.04/img | Mesma key do Gemini |
+| `CF_ZONE_ID` | Zone ID do domínio farpa.ai — DNS no provision | — | dash.cloudflare.com → farpa.ai → Overview |
 
 ## MCPs Locais (Claude Code)
 

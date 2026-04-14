@@ -6,7 +6,7 @@
 #  · Output: /tmp/audit-report.json
 #
 #  Chamado por: .github/workflows/audit.yml
-#  Requer: wrangler autenticado via CF_API_TOKEN + CF_ACCOUNT_ID
+#  Requer: wrangler autenticado via CF_TOKEN_READ + CF_ACCOUNT_ID (somente leitura)
 # ══════════════════════════════════════════════════════════════════
 set -euo pipefail
 

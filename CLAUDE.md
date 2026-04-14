@@ -231,17 +231,31 @@ O NotebookLM não tem API pública. Integração é via workflow manual:
 
 ---
 
-## SECRETS NESTE REPO (atualizado)
+## SECRETS NESTE REPO
 
+### Anthropic + GitHub
 | Secret | Origem | Usado por |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | console.anthropic.com | `claude-code-action` em todos os workflows |
-| `CF_API_TOKEN` | CF → API Tokens (Pages+Workers+D1+KV+DNS Edit) | deploy.yml, audit.yml, provision.yml |
-| `CF_ACCOUNT_ID` | CF dashboard → sidebar direita | Todas as chamadas wrangler |
-| `CF_ZONE_ID` | CF → farpa.ai → Overview | provision.yml (criar DNS) |
-| `GH_PAT` | GitHub → Settings → PAT (escopos: `repo` + `workflow`) | sync.yml, provision.yml, repository_dispatch |
-| `GEMINI_API_KEY` | aistudio.google.com → Get API Key | audit.yml (Search Grounding), provision.yml |
-| `GOOGLE_IMAGEN_API_KEY` | aistudio.google.com → Get API Key | provision.yml (hero image) |
+| `ANTHROPIC_API_KEY` | console.anthropic.com | `claude-code-action` — todos os workflows |
+| `GH_PAT` | GitHub → Settings → PAT (`repo` + `workflow`) | sync.yml, provision.yml, repository_dispatch |
+
+### Cloudflare — segregados por escopo mínimo
+
+| Secret | Permissões CF | Usado por | Por que separado |
+|---|---|---|---|
+| `CF_TOKEN_READ` | Pages:Read · Workers:Read · D1:Read · KV:Read | `audit.yml` | Só lê — se vazar, não destrói nada |
+| `CF_TOKEN_DEPLOY` | Pages:Edit · Workers Scripts:Edit | `deploy.yml` | Deploy não precisa criar recursos |
+| `CF_TOKEN_PROVISION` | Pages:Edit · Workers:Edit · D1:Edit · KV:Edit | `provision.yml` (wrangler) | Cria recursos, não mexe em DNS |
+| `CF_TOKEN_DNS` | DNS:Edit (zona farpa.ai) | `provision.yml` (curl API) | DNS é zona-level, isolado |
+| `CF_ACCOUNT_ID` | — | Todos os workflows CF | Não é secret mas necessário |
+
+> **Como criar no Cloudflare:** dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom Token
+
+### Google
+| Secret | Origem | Custo | Usado por |
+|---|---|---|---|
+| `GEMINI_API_KEY` | aistudio.google.com → Get API Key | Free tier | audit.yml (Search Grounding) |
+| `GOOGLE_IMAGEN_API_KEY` | Mesma key do Gemini | ~$0.04/imagem | provision.yml (opcional, default off) |
 
 > **MCP Local (Claude Code):** Gemini API em `~/.claude/settings.json` · Stitch configurado via Claude Desktop
 
