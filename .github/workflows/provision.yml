@@ -32,9 +32,9 @@ on:
         default: true
         type: boolean
       generate_hero_image:
-        description: "Gerar hero image com Imagen 3 (requer GOOGLE_IMAGEN_API_KEY)"
+        description: "Gerar hero image com Imagen 3 (requer GOOGLE_IMAGEN_API_KEY — ~$0.04/imagem)"
         required: false
-        default: true
+        default: false
         type: boolean
       generate_stitch_brief:
         description: "Gerar design brief para uso com Stitch MCP localmente"
