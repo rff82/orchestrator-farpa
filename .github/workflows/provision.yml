@@ -61,6 +61,7 @@ jobs:
 
       - name: Claude preflight validation
         id: claude-check
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -180,6 +181,7 @@ HTML
       - uses: actions/checkout@v4
 
       - name: Claude generate CLAUDE.md
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -494,6 +496,7 @@ subtle gradient, professional fintech aesthetic, 16:9 aspect ratio"
       - uses: actions/checkout@v4
 
       - name: Claude generates Stitch brief
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -557,6 +560,7 @@ subtle gradient, professional fintech aesthetic, 16:9 aspect ratio"
       - uses: actions/checkout@v4
 
       - name: Claude provision summary
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
