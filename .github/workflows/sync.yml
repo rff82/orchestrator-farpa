@@ -105,11 +105,10 @@ jobs:
           cat ./all-validations.json
 
       - name: Claude sync report
-        uses: anthropic/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_tools: "Read,Write"
-          max_turns: 5
+          claude_args: "--allowedTools Read,Write --max-turns 5"
           prompt: |
             Você é o engenheiro de confiabilidade do ecossistema farpa.ai.
             Leia CLAUDE.md (contexto do ecossistema) e all-validations.json (resultado da validação de cada repo).

@@ -99,11 +99,10 @@ jobs:
           cp /tmp/gemini-context.json ./gemini-context.json
 
       - name: Claude analysis
-        uses: anthropic/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_tools: "Read,Write"
-          max_turns: 5
+          claude_args: "--allowedTools Read,Write --max-turns 5"
           prompt: |
             Você é o auditor de infraestrutura do farpa.ai. Leia:
             - CLAUDE.md (contexto do ecossistema)

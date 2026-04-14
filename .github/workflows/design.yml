@@ -46,11 +46,10 @@ jobs:
         continue-on-error: true
 
       - name: Claude generates design brief
-        uses: anthropic/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_tools: "Read,Write,Bash"
-          max_turns: 8
+          claude_args: "--allowedTools Read,Write,Bash --max-turns 8"
           prompt: |
             Você é o designer de produto do ecossistema farpa.ai.
             Leia CLAUDE.md (contexto do orquestrador) e product-context/CLAUDE.md (se existir).

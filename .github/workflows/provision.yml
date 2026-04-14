@@ -60,11 +60,10 @@ jobs:
 
       - name: Claude preflight validation
         id: claude-check
-        uses: anthropic/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_tools: "Read,Write"
-          max_turns: 3
+          claude_args: "--allowedTools Read,Write --max-turns 3"
           prompt: |
             Valide o provisionamento de novo produto para o ecossistema farpa.ai.
 
@@ -180,11 +179,10 @@ HTML
       - uses: actions/checkout@v4
 
       - name: Claude generate CLAUDE.md
-        uses: anthropic/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_tools: "Read,Write"
-          max_turns: 5
+          claude_args: "--allowedTools Read,Write --max-turns 5"
           prompt: |
             Gere um CLAUDE.md completo para o novo produto do ecossistema farpa.ai.
 
@@ -495,11 +493,10 @@ subtle gradient, professional fintech aesthetic, 16:9 aspect ratio"
       - uses: actions/checkout@v4
 
       - name: Claude generates Stitch brief
-        uses: anthropic/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_tools: "Read,Write"
-          max_turns: 3
+          claude_args: "--allowedTools Read,Write --max-turns 3"
           prompt: |
             Gere um design brief para o novo produto farpa.${{ inputs.product_name }}.
 
@@ -559,11 +556,10 @@ subtle gradient, professional fintech aesthetic, 16:9 aspect ratio"
       - uses: actions/checkout@v4
 
       - name: Claude provision summary
-        uses: anthropic/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_tools: "Read,Write"
-          max_turns: 3
+          claude_args: "--allowedTools Read,Write --max-turns 3"
           prompt: |
             O provisionamento do novo produto farpa.${{ inputs.product_name }} foi concluído.
             Leia CLAUDE.md e escreva em /tmp/provision-summary.md um Issue de conclusão:

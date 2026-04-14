@@ -64,11 +64,10 @@ jobs:
 
       - name: Claude pre-deploy review
         id: review
-        uses: anthropic/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_tools: "Read,Bash"
-          max_turns: 5
+          claude_args: "--allowedTools Read,Bash --max-turns 5"
           prompt: |
             Você é o revisor de segurança pré-deploy do farpa.ai.
             Leia CLAUDE.md (contexto do orquestrador) e os arquivos em product-context/ (se existir).
@@ -212,11 +211,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Claude deploy summary
-        uses: anthropic/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_tools: "Read,Write"
-          max_turns: 3
+          claude_args: "--allowedTools Read,Write --max-turns 3"
           prompt: |
             O deploy do ecossistema farpa.ai acabou de completar.
             Leia CLAUDE.md e escreva em /tmp/deploy-summary.md um relatório conciso de deploy:
