@@ -101,7 +101,6 @@ jobs:
           cp /tmp/gemini-context.json ./gemini-context.json
 
       - name: Claude analysis
-        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
