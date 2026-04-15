@@ -73,10 +73,10 @@
       "workers": ["health-worker"],
       "worker_dir": "workers/health-worker",
       "d1_databases": [
-        { "name": "health-farpa-ai-db", "id": "" }
+        { "name": "health-farpa-ai-db", "id": "da2b7c89-ff0f-4115-b4de-20d0762d9b88" }
       ],
       "kv_namespaces": [
-        { "name": "HEALTH_CACHE", "id": "" }
+        { "name": "HEALTH_CACHE", "id": "cb93b4c65c9744e082c465b6f7ad3218" }
       ],
       "has_worker": true,
       "static_only": false,
@@ -116,6 +116,24 @@
       "static_only": false,
       "status": "in_progress",
       "worker_secrets": ["ANTHROPIC_API_KEY", "ALLOWED_ORIGIN"]
+    },
+    {
+      "repo": "teste-farpa-ai",
+      "display_name": "farpa Teste",
+      "subdomain": "teste.farpa.ai",
+      "cf_pages_project": "teste-farpa-ai",
+      "workers": ["teste-worker"],
+      "worker_dir": "workers/teste-worker",
+      "d1_databases": [
+        { "name": "teste-farpa-ai-db", "id": "PREENCHER_APÓS_WRANGLER_CREATE" }
+      ],
+      "kv_namespaces": [
+        { "name": "TESTE_CACHE", "id": "PREENCHER_APÓS_WRANGLER_CREATE" }
+      ],
+      "has_worker": true,
+      "static_only": false,
+      "status": "in_progress",
+      "worker_secrets": ["ALLOWED_ORIGIN"]
     },
     {
       "repo": "docs-farpa-ai",
