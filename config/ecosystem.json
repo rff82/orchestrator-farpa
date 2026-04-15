@@ -125,10 +125,10 @@
       "workers": ["teste-worker"],
       "worker_dir": "workers/teste-worker",
       "d1_databases": [
-        { "name": "teste-farpa-ai-db", "id": "PREENCHER_APÓS_WRANGLER_CREATE" }
+        { "name": "teste-farpa-ai-db", "id": "83ab62d8-3d09-4166-9457-71f402d58e50" }
       ],
       "kv_namespaces": [
-        { "name": "TESTE_CACHE", "id": "PREENCHER_APÓS_WRANGLER_CREATE" }
+        { "name": "TESTE_CACHE", "id": "2f3de87e30dc4f8aae1cbe5797a051fa" }
       ],
       "has_worker": true,
       "static_only": false,
