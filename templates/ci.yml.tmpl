@@ -1,5 +1,7 @@
 # .github/workflows/ci.yml — gerado por rff82/orchestrator-farpa
 # Produto: {{PRODUCT_DISPLAY_NAME}} · {{SUBDOMAIN}}
+# REGRA MESTRE: CI self-healing — falhas viram entrada em "## HISTÓRICO DE FALHAS DE CI"
+# do CLAUDE.md local. Ver farpa-reengenharia/06-operacional/09-ci-self-healing.md
 name: Deploy {{SUBDOMAIN}}
 
 on:
@@ -10,22 +12,222 @@ jobs:
   deploy-pages:
     name: Deploy Cloudflare Pages
     runs-on: ubuntu-latest
+    outputs:
+      status:    ${{ steps.set-status.outputs.status }}
+      error_log: ${{ steps.capture.outputs.error_log }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+      - uses: actions/setup-node@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: {{CF_PAGES_PROJECT}}
-          directory: .
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          node-version: 20
 
+      - name: Install Wrangler
+        run: npm install -g wrangler
+
+      - name: Deploy Pages
+        id: deploy
+        run: wrangler pages deploy . --project-name {{CF_PAGES_PROJECT}} --branch main 2>&1 | tee deploy-pages.log
+        env:
+          CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Capture error log on failure
+        id: capture
+        if: failure()
+        run: |
+          echo "error_log<<EOF" >> $GITHUB_OUTPUT
+          tail -n 80 deploy-pages.log >> $GITHUB_OUTPUT || echo "no log captured" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Set status
+        id: set-status
+        if: always()
+        run: echo "status=${{ job.status }}" >> $GITHUB_OUTPUT
+
+      - name: Upload deploy log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-pages-log
+          path: deploy-pages.log
+          retention-days: 14
+{{#if HAS_WORKER}}
+
+  deploy-worker:
+    name: Deploy {{WORKER_NAME}}
+    runs-on: ubuntu-latest
+    outputs:
+      status:    ${{ steps.set-status.outputs.status }}
+      error_log: ${{ steps.capture.outputs.error_log }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: workers/{{WORKER_NAME}}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci 2>&1 | tee install.log
+        working-directory: workers/{{WORKER_NAME}}
+
+      - name: Deploy Worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken:         ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId:        ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/{{WORKER_NAME}}
+
+      - name: Capture error log on failure
+        id: capture
+        if: failure()
+        working-directory: workers/{{WORKER_NAME}}
+        run: |
+          echo "error_log<<EOF" >> $GITHUB_OUTPUT
+          (tail -n 80 install.log 2>/dev/null || echo "no install log") >> $GITHUB_OUTPUT
+          echo "---" >> $GITHUB_OUTPUT
+          echo "wrangler step outcome: ${{ steps.deploy.outcome }}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Set status
+        id: set-status
+        if: always()
+        run: echo "status=${{ job.status }}" >> $GITHUB_OUTPUT
+
+      - name: Upload install log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-worker-log
+          path: workers/{{WORKER_NAME}}/install.log
+          retention-days: 14
+{{/if}}
+
+  # ── Self-healing: em caso de falha, documenta em CLAUDE.md local + abre issue ──
+  record-failure:
+    name: Record failure in CLAUDE.md
+    needs: [deploy-pages{{#if HAS_WORKER}}, deploy-worker{{/if}}]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues:   write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Append failure entry to CLAUDE.md
+        env:
+          PAGES_STATUS:  ${{ needs.deploy-pages.outputs.status }}
+          PAGES_LOG:     ${{ needs.deploy-pages.outputs.error_log }}
+{{#if HAS_WORKER}}
+          WORKER_STATUS: ${{ needs.deploy-worker.outputs.status }}
+          WORKER_LOG:    ${{ needs.deploy-worker.outputs.error_log }}
+{{/if}}
+          RUN_URL:       ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT:        ${{ github.sha }}
+        run: |
+          set -e
+          DATE=$(date -u +"%Y-%m-%d %H:%MZ")
+          SHORT_SHA=$(echo "$COMMIT" | cut -c1-7)
+          SEP="---"
+
+          if ! grep -q "^## HISTÓRICO DE FALHAS DE CI" CLAUDE.md; then
+            {
+              echo ""
+              echo "$SEP"
+              echo ""
+              echo "## HISTÓRICO DE FALHAS DE CI"
+              echo "> Registro automático escrito pelo job \`record-failure\` em \`.github/workflows/ci.yml\`."
+              echo "> Cada entrada abaixo foi uma falha real — consultar antes de repetir mesma operação."
+            } >> CLAUDE.md
+          fi
+
+          {
+            echo ""
+            echo "### ${DATE} · commit ${SHORT_SHA}"
+            echo ""
+            echo "- **Pages:** ${PAGES_STATUS:-skipped}"
+{{#if HAS_WORKER}}
+            echo "- **Worker:** ${WORKER_STATUS:-skipped}"
+{{/if}}
+            echo "- **Run:** ${RUN_URL}"
+            echo ""
+            if [ -n "${PAGES_LOG:-}" ]; then
+              echo "<details><summary>Log Pages (últimas linhas)</summary>"
+              echo ""
+              echo '```'
+              echo "${PAGES_LOG}"
+              echo '```'
+              echo ""
+              echo "</details>"
+            fi
+{{#if HAS_WORKER}}
+            if [ -n "${WORKER_LOG:-}" ]; then
+              echo "<details><summary>Log Worker (últimas linhas)</summary>"
+              echo ""
+              echo '```'
+              echo "${WORKER_LOG}"
+              echo '```'
+              echo ""
+              echo "</details>"
+            fi
+{{/if}}
+            echo ""
+            echo "> **TODO:** após corrigir, registrar a lição aprendida logo abaixo (1 linha)."
+          } >> CLAUDE.md
+
+      - name: Commit entry
+        run: |
+          git config user.name  "{{SLUG}}-ci-bot"
+          git config user.email "ci-bot@{{SUBDOMAIN}}"
+          git add CLAUDE.md
+          if git diff --cached --quiet; then
+            echo "Nenhuma alteração a registrar."
+          else
+            git commit -m "docs(ci): registra falha em CLAUDE.md · run ${{ github.run_id }} [skip ci]"
+            git push
+          fi
+
+      - name: Open tracking issue
+        uses: actions/github-script@v7
+        env:
+          PAGES_STATUS:  ${{ needs.deploy-pages.outputs.status }}
+{{#if HAS_WORKER}}
+          WORKER_STATUS: ${{ needs.deploy-worker.outputs.status }}
+{{/if}}
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const pages  = process.env.PAGES_STATUS  || 'skipped';
+            const worker = process.env.WORKER_STATUS || 'n/a';
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `CI falhou em ${context.sha.substring(0,7)} — Pages: ${pages} · Worker: ${worker}`,
+              body: [
+                `Falha de CI registrada no CLAUDE.md automaticamente.`,
+                ``,
+                `- Commit: ${context.sha}`,
+                `- Run: ${runUrl}`,
+                `- Pages: **${pages}**`,
+                `- Worker: **${worker}**`,
+                ``,
+                `Consultar seção \`## HISTÓRICO DE FALHAS DE CI\` no CLAUDE.md para o log capturado.`,
+                `Após corrigir, editar a entrada com a lição aprendida (1 linha).`,
+              ].join('\n'),
+              labels: ['ci-failure','automated']
+            });
+
+{{#if HAS_ORCHESTRATOR_NOTIFY}}
   notify-orchestrator:
     name: Notify orchestrator
     runs-on: ubuntu-latest
-    needs: deploy-pages
+    needs: [deploy-pages{{#if HAS_WORKER}}, deploy-worker{{/if}}]
     if: success()
     steps:
       - name: Dispatch to orchestrator-farpa
@@ -41,8 +243,9 @@ jobs:
                 "repo": "{{REPO_NAME}}",
                 "subdomain": "{{SUBDOMAIN}}",
                 "commit_sha": "${{ github.sha }}",
-                "deploy_pages": false,
-                "deploy_workers": true,
+                "deploy_pages": true,
+                "deploy_workers": {{#if HAS_WORKER}}true{{else}}false{{/if}},
                 "triggered_by": "push-to-main"
               }
             }'
+{{/if}}

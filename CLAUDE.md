@@ -51,7 +51,7 @@ cria CLAUDE.md, detecta anomalias — usando `anthropic/claude-code-action`.
 
 ## REGRAS INEGOCIÁVEIS (nunca sobrescrever, aplicar a todos os produtos)
 
-1. **Alto contraste sempre visível** — botão no header de toda página. Rodrigo tem baixa visão. Isso é requisito de existência.
+1. **Alto contraste é toggle secundário, sempre disponível no header** (`#btn-alto-contraste` → `.theme-alto-contraste`). NÃO é o tema padrão. Rodrigo tem baixa visão — precisa acessar em 1 clique. Tema padrão do produto segue tendência da categoria (regra 14).
 2. **WCAG AA mínimo** — verificar contraste antes de qualquer sugestão de código
 3. **API keys nunca no cliente** — sempre `wrangler secret put`, nunca em JS/HTML
 4. **Cores nunca hardcoded** — sempre `var(--token-name)`
@@ -59,6 +59,13 @@ cria CLAUDE.md, detecta anomalias — usando `anthropic/claude-code-action`.
 6. **Nunca modificar** `tokens.css` / `themes.css` / `theme-engine.js` sem versionar
 7. **Vercel nunca em produção** — apenas Cloudflare Pages
 8. **Presentation-ready** — toda página deve convencer executivo sem explicação verbal
+9. **Cookies cross-site obrigatórios `SameSite=None; Secure; Partitioned`** — Pages e Workers ficam em origens distintas; `SameSite=Lax` quebra o login. Ver `farpa-reengenharia/03-arquitetura/02-fluxos-e-apis.md` → seção "Autenticação Pages ↔ Worker".
+10. **Logo system unificado** — todo produto usa o mesmo componente `farpa-logo` (mark + wordmark "farpa" + sublabel), trocando só `--logo-mark-bg`. Nunca criar SVG próprio. Ver `farpa-reengenharia/02-design-system/03-logo-system.md`.
+11. **Ícones SVG line, nunca emojis** como ícones funcionais — usar Lucide Icons inline. Emoji só em microcopy (toast, saudação). Ver `farpa-reengenharia/02-design-system/02-identidade-visual.md` § Iconografia.
+12. **Carrossel de produtos na landing do principal** — `rff82/AI/index.html` consome `/data/products.json` gerado do `ecosystem.yaml`. Adicionar produto novo = editar YAML + rodar `regen-docs.py`. Ver `farpa-reengenharia/02-design-system/04-product-carousel.md`.
+13. **Números públicos precisam de fonte real** — nunca colocar stats inventadas (`500+ usuários`) em landing. Ou puxa de D1, ou não mostra.
+14. **Paleta por tendência de categoria** — antes de definir cores de qualquer produto novo, rodar pesquisa em WGSN + Mobbin (top-tier da categoria) + Dribbble + Awwwards. Índigo `#4338CA` é cor mestre farpa, só vira *primary* em IdP/admin. Demais produtos têm primary on-trend da categoria. Metodologia + mapa vigente de paletas: `farpa-reengenharia/02-design-system/05-trend-research.md`.
+15. **CI self-healing obrigatório** — todo `ci.yml` de produto deve capturar logs (`tee + upload-artifact`) e ter job `record-failure` (`needs: [...]` + `if: failure()`) que apende a falha em `## HISTÓRICO DE FALHAS DE CI` do `CLAUDE.md` local com commit `[skip ci]` + issue automática `ci-failure`. Nenhuma falha pode sumir. Ver `farpa-reengenharia/06-operacional/09-ci-self-healing.md`.
 
 ---
 

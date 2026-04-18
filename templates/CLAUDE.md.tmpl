@@ -57,10 +57,14 @@ Arquivos core:     tokens.css → themes.css → components.css → theme-engine
 Load order:        NUNCA alterar a ordem dos <link> e <script>
 ```
 
-### Alto contraste — REGRA INEGOCIÁVEL
+### Paleta on-trend da categoria
 
-O botão de alto contraste deve estar **sempre visível no header**, em todas as páginas.
-Rodrigo tem baixa visão — isso é requisito de existência, não feature opcional.
+Este produto pertence à categoria **{{CATEGORY}}**. A paleta primária seguiu pesquisa obrigatória (WGSN + Mobbin + Dribbble + Awwwards). Fontes e veredito específicos registrados em `## DESIGN SYSTEM` abaixo.
+Metodologia mestre: `farpa-reengenharia/02-design-system/05-trend-research.md`.
+
+### Alto contraste — toggle secundário SEMPRE disponível
+
+O botão de alto contraste `#btn-alto-contraste` deve estar **sempre visível no header**, em todas as páginas — NÃO é o tema padrão. Rodrigo tem baixa visão; precisa acessar AAA em 1 clique. O tema padrão do produto é a paleta on-trend da categoria.
 
 ```javascript
 // Implementação padrão — não modificar
@@ -110,7 +114,8 @@ Aplicar em **toda** chamada externa.
 
 ## REGRAS INEGOCIÁVEIS
 
-- **Alto contraste sempre visível** — botão no header de toda página
+- **Alto contraste é toggle secundário**, sempre disponível no header (`#btn-alto-contraste`). Nunca é o tema padrão — Rodrigo alterna quando precisa.
+- **Paleta on-trend da categoria** ({{CATEGORY}}) — definida via pesquisa em WGSN + Mobbin + Dribbble. Ver `farpa-reengenharia/02-design-system/05-trend-research.md`.
 - **WCAG AA mínimo** — checar contraste antes de qualquer push
 - **API keys nunca no cliente** — sempre `wrangler secret put`
 - **Cores nunca hardcoded** — sempre `var(--token)`
@@ -118,6 +123,36 @@ Aplicar em **toda** chamada externa.
 - **Nunca modificar** tokens.css / themes.css / theme-engine.js sem versionar
 - **Vercel nunca em produção** — apenas Cloudflare Pages
 - **Todos os arquivos HTML na raiz** — sem subpastas para páginas
+- **Cookies de sessão cross-site** — `SameSite=None; Secure; Partitioned` (Pages e Worker em origens distintas). `SameSite=Lax` quebra o login. Ver `farpa-reengenharia/03-arquitetura/02-fluxos-e-apis.md`.
+- **Logo unificado** — usar componente `farpa-logo` com `--logo-mark-bg: {{ACCENT_COLOR}}`. Nunca criar SVG próprio. Ver `farpa-reengenharia/02-design-system/03-logo-system.md`.
+- **Ícones SVG line (Lucide), nunca emojis** como ícones funcionais.
+- **Sem números inventados** em landing — ou puxa do D1, ou não mostra.
+- **CI self-healing** — se o `ci.yml` falhar, o próprio workflow apende a falha na seção `## HISTÓRICO DE FALHAS DE CI` deste arquivo e abre issue `ci-failure`. Ver `farpa-reengenharia/06-operacional/09-ci-self-healing.md`.{{#if HAS_WORKER}}
+
+---
+
+## PADRÃO AUTH — Cookie cross-site (obrigatório se worker emite sessão)
+
+```ts
+// {{WORKER_NAME}}/src/index.ts
+function sessionCookie(sid: string, maxAge = 86400): string {
+  return [
+    `{{SLUG}}_sid=${sid}`,
+    'Path=/', 'HttpOnly', 'Secure',
+    'SameSite=None', 'Partitioned',
+    `Max-Age=${maxAge}`,
+  ].join('; ');
+}
+
+const ALLOWED_ORIGINS = [
+  'https://{{SUBDOMAIN}}',
+  'https://{{CF_PAGES_PROJECT}}.pages.dev',
+  'https://admin.farpa.ai',
+  'http://localhost:8787',
+];
+```
+
+Cliente **sempre** com `credentials: 'include'` e CORS com origin específica.{{/if}}
 
 ---
 
@@ -130,6 +165,15 @@ Criar/editar arquivo
   → Cloudflare Pages deploy automático (~2 min)
   → Confirmar em {{SUBDOMAIN}}
 ```
+
+---
+
+## HISTÓRICO DE FALHAS DE CI
+> Registro automático escrito pelo job `record-failure` em `.github/workflows/ci.yml`.
+> Cada entrada abaixo foi uma falha real — consultar antes de repetir mesma operação.
+> Regra mestre: `farpa-reengenharia/06-operacional/09-ci-self-healing.md`.
+
+<!-- Nenhuma falha registrada ainda. Primeiro run quebrado criará a primeira entrada. -->
 
 ---
 
